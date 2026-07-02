@@ -147,18 +147,22 @@ Examples:
         print("🚀 Starting ADK pipeline...\n")
         start_time = time.time()
 
+        import uuid
+        run_session_id = f"sess_{uuid.uuid4().hex}"
+
         # Create session first
         await session_service.create_session(
             app_name="multilingual_qna_cli",
             user_id="cli_user",
-            session_id="cli_session",
+            session_id=run_session_id,
         )
 
         async for event in runner.run_async(
             user_id="cli_user",
-            session_id="cli_session",
+            session_id=run_session_id,
             new_message=content,
         ):
+
             # Print agent activity
             if hasattr(event, 'content') and event.content:
                 author = getattr(event, 'author', 'system')

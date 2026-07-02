@@ -519,19 +519,24 @@ async def run_adk_pipeline(file_path: str, api_key: str, num_pairs: int, model: 
         parts=[types.Part.from_text(text=user_message)],
     )
 
+    # Create a unique session ID for this run to avoid history pollution
+    import uuid
+    run_session_id = f"sess_{uuid.uuid4().hex}"
+
     # Create session first
     await session_service.create_session(
         app_name="multilingual_qna_app",
         user_id="streamlit_user",
-        session_id="streamlit_session",
+        session_id=run_session_id,
     )
 
     async for event in runner.run_async(
         user_id="streamlit_user",
-        session_id="streamlit_session",
+        session_id=run_session_id,
         new_message=content,
     ):
         yield event
+
 
 
 
