@@ -404,8 +404,8 @@ if not api_key:
 
 # ─── Pipeline Execution ─────────────────────────────────────────────
 
-def run_adk_pipeline(file_path: str, api_key: str, num_pairs: int, model: str, output_path: str):
-    """Run the ADK multi-agent pipeline synchronously."""
+async def run_adk_pipeline(file_path: str, api_key: str, num_pairs: int, model: str, output_path: str):
+    """Run the ADK multi-agent pipeline and yield events."""
     if api_key == "DEMO_MODE" or not api_key:
         api_key = "MOCK_KEY"
         model = "mock-model"
@@ -494,41 +494,25 @@ def run_adk_pipeline(file_path: str, api_key: str, num_pairs: int, model: str, o
     )
 
     user_message = f"Process the document at: {file_path}"
+    content = types.Content(
+        role="user",
+        parts=[types.Part.from_text(text=user_message)],
+    )
 
-    async def _run():
-        content = types.Content(
-            role="user",
-            parts=[types.Part.from_text(text=user_message)],
-        )
-        events = []
-        # Create session first
-        await session_service.create_session(
-            app_name="multilingual_qna_app",
-            user_id="streamlit_user",
-            session_id="streamlit_session",
-        )
+    # Create session first
+    await session_service.create_session(
+        app_name="multilingual_qna_app",
+        user_id="streamlit_user",
+        session_id="streamlit_session",
+    )
 
-        async for event in runner.run_async(
-            user_id="streamlit_user",
-            session_id="streamlit_session",
-            new_message=content,
-        ):
-            events.append(event)
-        return events
+    async for event in runner.run_async(
+        user_id="streamlit_user",
+        session_id="streamlit_session",
+        new_message=content,
+    ):
+        yield event
 
-    # Run async in sync context
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import nest_asyncio
-            nest_asyncio.apply()
-            events = loop.run_until_complete(_run())
-        else:
-            events = asyncio.run(_run())
-    except RuntimeError:
-        events = asyncio.run(_run())
-
-    return events
 
 
 def extract_qna_from_events(events) -> dict:
@@ -599,23 +583,44 @@ if uploaded_file and api_key and generate_btn:
         progress_bar = st.progress(0, text="Initializing ADK agent pipeline...")
 
         # Run the pipeline
+        events = []
         with st.spinner("🚀 Running ADK multi-agent pipeline..."):
-            for i, (agent_name, desc) in enumerate(agents_info):
-                progress_bar.progress(
-                    (i + 1) / len(agents_info),
-                    text=f"Agent: {agent_name} — {desc}",
-                )
+            async def _consume():
+                async for event in run_adk_pipeline(
+                    file_path=temp_path,
+                    api_key=api_key,
+                    num_pairs=num_pairs,
+                    model=model_name,
+                    output_path=output_path,
+                ):
+                    events.append(event)
+                    # Update progress bar dynamically based on the current agent executing
+                    author = getattr(event, 'author', '')
+                    if author == 'document_parser':
+                        progress_bar.progress(0.2, text="Agent: 📄 document_parser — Parsing document text...")
+                    elif author == 'qna_generator':
+                        progress_bar.progress(0.4, text=f"Agent: 🧠 qna_generator — Generating {num_pairs} English pairs...")
+                    elif author == 'hindi_translator':
+                        progress_bar.progress(0.6, text="Agent: 🇮🇳 hindi_translator — Translating QnA to Hindi...")
+                    elif author == 'marathi_translator':
+                        progress_bar.progress(0.8, text="Agent: 🇮🇳 marathi_translator — Translating QnA to Marathi...")
+                    elif author == 'excel_compiler':
+                        progress_bar.progress(0.95, text="Agent: 📊 excel_compiler — Creating styled Excel output...")
 
-            events = run_adk_pipeline(
-                file_path=temp_path,
-                api_key=api_key,
-                num_pairs=num_pairs,
-                model=model_name,
-                output_path=output_path,
-            )
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    import nest_asyncio
+                    nest_asyncio.apply()
+                    loop.run_until_complete(_consume())
+                else:
+                    asyncio.run(_consume())
+            except RuntimeError:
+                asyncio.run(_consume())
 
         progress_bar.progress(1.0, text="✅ All agents completed successfully!")
         time.sleep(0.5)
+
 
         # Extract results from events
         results = extract_qna_from_events(events)
