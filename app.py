@@ -469,7 +469,7 @@ async def run_adk_pipeline(file_path: str, api_key: str, num_pairs: int, model: 
         model=model,
         instruction=HINDI_TRANSLATOR_INSTRUCTION,
         description="Translates English QnA pairs to Hindi.",
-        tools=[get_english_qna, save_qna_pairs],
+        tools=[save_qna_pairs],
         output_key="hindi_qna_output",
     )
 
@@ -478,7 +478,7 @@ async def run_adk_pipeline(file_path: str, api_key: str, num_pairs: int, model: 
         model=model,
         instruction=MARATHI_TRANSLATOR_INSTRUCTION,
         description="Translates English QnA pairs to Marathi.",
-        tools=[get_english_qna, save_qna_pairs],
+        tools=[save_qna_pairs],
         output_key="marathi_qna_output",
     )
 

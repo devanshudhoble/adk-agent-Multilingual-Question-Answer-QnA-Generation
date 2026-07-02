@@ -47,9 +47,9 @@ HEADER_BORDER = Border(
 
 
 def compile_excel_report(
-    english_qna_json: str,
-    hindi_qna_json: str,
-    marathi_qna_json: str,
+    english_qna_json: list,
+    hindi_qna_json: list,
+    marathi_qna_json: list,
     output_path: str,
 ) -> str:
     """Compile QnA pairs from all three languages into a styled Excel file.
@@ -59,9 +59,9 @@ def compile_excel_report(
     with frozen headers, alternating row colors, and styled tab colors.
 
     Args:
-        english_qna_json: JSON string of English QnA pairs array.
-        hindi_qna_json: JSON string of Hindi QnA pairs array.
-        marathi_qna_json: JSON string of Marathi QnA pairs array.
+        english_qna_json: List (or JSON string) of English QnA pairs array.
+        hindi_qna_json: List (or JSON string) of Hindi QnA pairs array.
+        marathi_qna_json: List (or JSON string) of Marathi QnA pairs array.
         output_path: File path to save the Excel file (e.g., 'QnA.xlsx').
 
     Returns:
@@ -101,10 +101,18 @@ def compile_excel_report(
 
 # ─── Internal Helpers ────────────────────────────────────────────────
 
-def _parse_qna_json(qna_json: str, language: str) -> list:
-    """Parse QnA JSON string into a list of dicts."""
+def _parse_qna_json(qna_input, language: str) -> list:
+    """Parse QnA input (which can be a list or a JSON string) into a list of dicts."""
+    if isinstance(qna_input, list):
+        return qna_input
+    if isinstance(qna_input, dict):
+        for key in ["qna", "qna_pairs", "pairs", "data"]:
+            if key in qna_input and isinstance(qna_input[key], list):
+                return qna_input[key]
+        return [qna_input]
+        
     try:
-        cleaned = qna_json.strip()
+        cleaned = str(qna_input).strip()
         if cleaned.startswith("```json"):
             cleaned = cleaned[7:]
         elif cleaned.startswith("```"):
@@ -124,6 +132,7 @@ def _parse_qna_json(qna_json: str, language: str) -> list:
         return pairs
     except json.JSONDecodeError as e:
         raise ValueError(f"{language}: Invalid JSON — {str(e)}")
+
 
 
 def _create_sheet(wb: Workbook, sheet_name: str, qna_pairs: list, is_first: bool = False):

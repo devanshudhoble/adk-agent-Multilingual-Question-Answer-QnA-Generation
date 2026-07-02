@@ -114,12 +114,12 @@ Workflow:
 1. Collect the English, Hindi, and Marathi QnA JSON data from the conversation history.
    - Look for the JSON arrays output by the qna_generator, hindi_translator, and marathi_translator agents.
 2. Call the `compile_excel_report` tool with:
-   - english_qna_json: The English QnA JSON array string
-   - hindi_qna_json: The Hindi QnA JSON array string
-   - marathi_qna_json: The Marathi QnA JSON array string  
+   - english_qna_json: The English QnA JSON array (list of objects)
+   - hindi_qna_json: The Hindi QnA JSON array (list of objects)
+   - marathi_qna_json: The Marathi QnA JSON array (list of objects)  
    - output_path: "{output_path}"
 3. Report the results including the number of pairs per language.
 
 IMPORTANT: Extract the JSON arrays from previous agents' responses. Look for text
-between [ and ] brackets. Pass them as JSON strings to the tool.
+between [ and ] brackets. Pass them directly as JSON arrays (lists of QnA objects) to the tool.
 """

@@ -12,6 +12,67 @@ Architecture:
     └── LlmAgent: excel_compiler         (Tools: compile_excel_report)
 """
 
+# ─── Automatic Rate Limit Retry Monkey-Patch for LiteLLM/Groq ────────
+import asyncio
+import re
+from google.adk.models.lite_llm import LiteLlm
+
+original_generate_content_async = LiteLlm.generate_content_async
+
+async def patched_generate_content_async(self, llm_request, stream=False):
+    max_retries = 6
+    base_delay = 5.0
+    
+    for attempt in range(max_retries):
+        try:
+            async for response in original_generate_content_async(self, llm_request, stream=stream):
+                yield response
+            return
+        except Exception as e:
+            err_name = type(e).__name__
+            err_msg = str(e)
+            
+            # Catch any rate limit or 429 error from any library (litellm, openai, groq, etc.)
+            is_rate_limit = (
+                "ratelimit" in err_name.lower() or 
+                "rate_limit" in err_name.lower() or 
+                "rate limit" in err_msg.lower() or
+                "429" in err_msg
+            )
+            
+            if is_rate_limit:
+                wait_time = base_delay * (1.5 ** attempt)
+                # Parse wait duration from error message if available
+                # E.g. "Please try again in 16.969999999s"
+                time_match = re.search(r'(?:try again in|retry after|wait|in\s+)([\d\.]+)\s*s', err_msg, re.IGNORECASE)
+                if time_match:
+                    try:
+                        wait_time = float(time_match.group(1)) + 1.5
+                    except ValueError:
+                        pass
+                
+                print(f"\n⚠️ Groq Rate Limit Hit. Waiting {wait_time:.2f}s before retry (Attempt {attempt+1}/{max_retries})...\n")
+                
+                try:
+                    import streamlit as st
+                    st.warning(f"⏳ **Rate limit hit on Groq**. Automatically waiting {wait_time:.1f}s to retry (Attempt {attempt+1}/{max_retries})...")
+                except Exception:
+                    pass
+                    
+                await asyncio.sleep(wait_time)
+            else:
+                # Not a rate limit error, raise immediately
+                raise e
+            
+    # Final fallback attempt
+    async for response in original_generate_content_async(self, llm_request, stream=stream):
+        yield response
+
+LiteLlm.generate_content_async = patched_generate_content_async
+# ──────────────────────────────────────────────────────────────────────
+
+
+
 from google.adk.agents import LlmAgent, SequentialAgent
 
 from .tools.document_tools import parse_document, get_document_text
@@ -74,7 +135,7 @@ def create_pipeline(
         model=model,
         instruction=HINDI_TRANSLATOR_INSTRUCTION,
         description="Translates English QnA pairs to Hindi.",
-        tools=[get_english_qna, save_qna_pairs],
+        tools=[save_qna_pairs],
         output_key="hindi_qna_output",
     )
 
@@ -84,7 +145,7 @@ def create_pipeline(
         model=model,
         instruction=MARATHI_TRANSLATOR_INSTRUCTION,
         description="Translates English QnA pairs to Marathi.",
-        tools=[get_english_qna, save_qna_pairs],
+        tools=[save_qna_pairs],
         output_key="marathi_qna_output",
     )
 
@@ -242,6 +303,7 @@ class MockLlm(BaseLlm):
             lang = "hindi" if is_hindi else "marathi"
             
             if last_part and hasattr(last_part, 'function_response') and last_part.function_response and last_part.function_response.name == "save_qna_pairs":
+                # Turn 2: final response
                 qna_json = ""
                 for msg in reversed(history):
                     if msg.role == 'model':
@@ -255,12 +317,11 @@ class MockLlm(BaseLlm):
                     content=types.Content(role="model", parts=[types.Part.from_text(text=qna_json)]),
                     partial=False
                 )
-            elif last_part and hasattr(last_part, 'function_response') and last_part.function_response and last_part.function_response.name == "get_english_qna":
-                fr = last_part.function_response
-                en_json = fr.response.get("result", "") if hasattr(fr, "response") and isinstance(fr.response, dict) else str(fr.response)
-                
+            else:
+                # Turn 1: translate and call save_qna_pairs directly
+                english_json = _find_qna_json_in_history(history, "english")
                 try:
-                    en_pairs = json.loads(en_json)
+                    en_pairs = json.loads(english_json)
                 except Exception:
                     en_pairs = []
                 
@@ -274,21 +335,6 @@ class MockLlm(BaseLlm):
                                 function_call=types.FunctionCall(
                                     name="save_qna_pairs",
                                     args={"qna_json": trans_json, "language": lang}
-                                )
-                            )
-                        ]
-                    ),
-                    partial=False
-                )
-            else:
-                english_json = _find_qna_json_in_history(history, "english")
-                yield LlmResponse(
-                    content=types.Content(role="model", 
-                        parts=[
-                            types.Part(
-                                function_call=types.FunctionCall(
-                                    name="get_english_qna",
-                                    args={"english_qna_data": english_json}
                                 )
                             )
                         ]
