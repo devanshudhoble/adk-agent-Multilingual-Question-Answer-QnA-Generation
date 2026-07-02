@@ -288,23 +288,21 @@ with st.sidebar:
     is_groq = model_name.startswith("groq/")
     default_key = DEFAULT_GROQ_KEY if is_groq else DEFAULT_GOOGLE_KEY
 
-
-    demo_mode = st.checkbox(
-        "🤖 Demo Mode (Offline / No Key)",
-        value=not bool(default_key),
-        help="Check this to test the app offline with mock data if you don't have an API key.",
-    )
-
-    if demo_mode:
-        api_key = "DEMO_MODE"
-        st.info("🤖 **Demo Mode Active**: Generates QnA pairs using ADK MockLlm offline.")
-    else:
-        api_key = st.text_input(
-            "🔑 Groq API Key" if is_groq else "🔑 Google API Key",
+    with st.expander("🔑 API Key Settings (Optional)", expanded=bool(default_key)):
+        api_key_input = st.text_input(
+            "Groq API Key" if is_groq else "Google API Key",
             value=default_key,
             type="password",
-            help="Your Groq API key." if is_groq else "Your Google AI Studio API key.",
+            help="Enter your API key to run live models. If left blank, Demo Mode will run offline automatically."
         )
+
+    if api_key_input.strip():
+        api_key = api_key_input.strip()
+        demo_mode = False
+    else:
+        api_key = "DEMO_MODE"
+        demo_mode = True
+
 
 
     st.markdown("---")
@@ -371,6 +369,12 @@ st.markdown("""
 
 st.markdown("")
 
+# Mode status banner
+if demo_mode:
+    st.info("🤖 **Mode: Demo (Offline / Mock LLM)** — Running end-to-end without API keys. Upload any document and click generate!")
+else:
+    st.success(f"⚡ **Mode: Live ({model_name})** — Connected and running live using your API key.")
+
 # File uploader
 uploaded_file = st.file_uploader(
     "📂 Upload Your Document",
@@ -410,8 +414,6 @@ with col2:
         disabled=not (uploaded_file and api_key),
     )
 
-if not api_key:
-    st.info("👈 Please configure your **API Key** in the sidebar.")
 
 
 
