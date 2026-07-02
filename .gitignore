@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Environment variables
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Output files
+QnA.xlsx
+Multilingual_QnA.xlsx
+*.xlsx
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# ADK
+.adk/
+
+# Temp
+tmp/
+temp/
