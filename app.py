@@ -19,21 +19,23 @@ import tempfile
 import shutil
 
 
-# ─── Load API Key from .env ──────────────────────────────────────────
-def _load_api_key() -> str:
-    """Load Gemini API key from .env file or environment variable."""
+# ─── Load API Keys from .env ──────────────────────────────────────────
+def _load_api_key(key_name: str) -> str:
+    """Load API key from .env file or environment variable."""
     env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
     if os.path.exists(env_path):
         with open(env_path, "r") as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith("#"):
-                    if "GOOGLE_API_KEY" in line:
+                    if key_name in line:
                         return line.split("=", 1)[1].strip().strip('"').strip("'")
-    return os.environ.get("GOOGLE_API_KEY", "")
+    return os.environ.get(key_name, "")
 
 
-DEFAULT_API_KEY = _load_api_key()
+DEFAULT_GOOGLE_KEY = _load_api_key("GOOGLE_API_KEY")
+DEFAULT_GROQ_KEY = _load_api_key("GROQ_API_KEY")
+
 
 # ─── Page Configuration ──────────────────────────────────────────────
 st.set_page_config(
@@ -260,24 +262,19 @@ with st.sidebar:
     st.markdown("## ⚙️ Configuration")
     st.markdown("---")
 
-    demo_mode = st.checkbox(
-        "🤖 Demo Mode (Offline / No Key)",
-        value=not bool(DEFAULT_API_KEY),
-        help="Check this to test the app offline with mock data if you don't have an API key.",
+    model_name = st.selectbox(
+        "🤖 Model Selection",
+        options=[
+            "gemini-2.0-flash", 
+            "gemini-1.5-flash", 
+            "gemini-2.5-flash",
+            "groq/llama-3.3-70b-versatile",
+            "groq/llama-3.1-70b-versatile",
+            "groq/llama-3.1-8b-instant"
+        ],
+        index=0,
+        help="Select the model for all agents. For Groq models, ensure you have set your Groq API Key.",
     )
-
-    if demo_mode:
-        api_key = "DEMO_MODE"
-        st.info("🤖 **Demo Mode Active**: Generates QnA pairs using ADK MockLlm offline.")
-    else:
-        api_key = st.text_input(
-            "🔑 Google API Key",
-            value=DEFAULT_API_KEY,
-            type="password",
-            help="Your Google AI Studio API key. Pre-loaded from .env file.",
-        )
-
-    st.markdown("---")
 
     num_pairs = st.slider(
         "📊 Number of QnA Pairs",
@@ -288,12 +285,27 @@ with st.sidebar:
         help="Number of Question-Answer pairs to generate per language.",
     )
 
-    model_name = st.selectbox(
-        "🤖 Gemini Model",
-        options=["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash"],
-        index=0,
-        help="Select the Gemini model for all agents.",
+    is_groq = model_name.startswith("groq/")
+    default_key = DEFAULT_GROQ_KEY if is_groq else DEFAULT_GOOGLE_KEY
+
+
+    demo_mode = st.checkbox(
+        "🤖 Demo Mode (Offline / No Key)",
+        value=not bool(default_key),
+        help="Check this to test the app offline with mock data if you don't have an API key.",
     )
+
+    if demo_mode:
+        api_key = "DEMO_MODE"
+        st.info("🤖 **Demo Mode Active**: Generates QnA pairs using ADK MockLlm offline.")
+    else:
+        api_key = st.text_input(
+            "🔑 Groq API Key" if is_groq else "🔑 Google API Key",
+            value=default_key,
+            type="password",
+            help="Your Groq API key." if is_groq else "Your Google AI Studio API key.",
+        )
+
 
     st.markdown("---")
     st.markdown("### 📁 Supported Formats")
@@ -399,7 +411,8 @@ with col2:
     )
 
 if not api_key:
-    st.info("👈 Please configure your **Google API Key** in the sidebar.")
+    st.info("👈 Please configure your **API Key** in the sidebar.")
+
 
 
 # ─── Pipeline Execution ─────────────────────────────────────────────
@@ -407,9 +420,14 @@ if not api_key:
 async def run_adk_pipeline(file_path: str, api_key: str, num_pairs: int, model: str, output_path: str):
     """Run the ADK multi-agent pipeline and yield events."""
     if api_key == "DEMO_MODE" or not api_key:
-        api_key = "MOCK_KEY"
+        os.environ["GOOGLE_API_KEY"] = "MOCK_KEY"
         model = "mock-model"
-    os.environ["GOOGLE_API_KEY"] = api_key
+    elif model.startswith("groq/"):
+        os.environ["GROQ_API_KEY"] = api_key
+        os.environ["GOOGLE_API_KEY"] = "MOCK_KEY"
+    else:
+        os.environ["GOOGLE_API_KEY"] = api_key
+
 
     from google.adk.agents import LlmAgent, SequentialAgent
     from google.adk.runners import Runner

@@ -72,16 +72,32 @@ Examples:
         sys.exit(1)
 
     # Load API key
-    load_dotenv()
+    load_dotenv(override=True)
     api_key = args.api_key or os.environ.get("GOOGLE_API_KEY", "")
+    groq_key = os.environ.get("GROQ_API_KEY", "")
     model = args.model
 
-    if api_key == "DEMO_MODE" or not api_key:
+    # Check if this is a Groq model
+    is_groq = model.startswith("groq/")
+
+    if not api_key and is_groq:
+        if groq_key:
+            api_key = groq_key
+        else:
+            print("❌ Error: Groq API Key must be set in --api-key, GOOGLE_API_KEY, or GROQ_API_KEY env vars.")
+            sys.exit(1)
+
+    if (api_key == "DEMO_MODE" or not api_key) and not is_groq:
         print("⚠️ Running in Mock/Demo mode using ADK MockLlm...")
         api_key = "MOCK_KEY"
         model = "mock-model"
 
-    os.environ["GOOGLE_API_KEY"] = api_key
+    if is_groq:
+        os.environ["GROQ_API_KEY"] = api_key
+        os.environ["GOOGLE_API_KEY"] = "MOCK_KEY"
+    else:
+        os.environ["GOOGLE_API_KEY"] = api_key
+
 
     # Import ADK components
     try:
